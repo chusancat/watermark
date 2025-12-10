@@ -1,31 +1,43 @@
 require('dotenv').config();
 const express = require('express');
-const AWS = require('aws-sdk'); // 使用旧版 SDK
 const cors = require('cors');
+const path = require('path'); // 引入 path 模块
+const AWS = require('aws-sdk'); // 假设你还在用 v2
 
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use(express.static('public'));
+
+// 关键修正 1: 使用绝对路径托管静态文件
+app.use(express.static(path.join(__dirname, 'public')));
+
+// 关键修正 2: 显式定义根路由，确保访问域名时返回 index.html
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// 关键修正 3: 显式定义后台路由
+app.get('/admin', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
 
 // --- 配置 Cloudflare R2 (AWS SDK v2) ---
 const s3 = new AWS.S3({
     endpoint: process.env.R2_ENDPOINT,
     accessKeyId: process.env.R2_ACCESS_KEY_ID,
     secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
-    signatureVersion: 'v4', // 必须强制使用 v4 签名
+    signatureVersion: 'v4',
     region: 'auto'
 });
 
 const BUCKET_NAME = process.env.R2_BUCKET_NAME;
 
-// 1. 获取上传预签名 URL
+// API: 获取上传链接
 app.post('/api/get-upload-url', async (req, res) => {
     try {
         const { filename, fileType, metadata } = req.body;
         const objectKey = `photos/${Date.now()}_${filename}`;
 
-        // 准备元数据 (统一编码，防止中文导致签名错误)
         const metaDataConfig = {
             'upload-time': new Date().toISOString(),
             'location-name': encodeURIComponent(metadata.locationName || 'Unknown'),
@@ -42,11 +54,8 @@ app.post('/api/get-upload-url', async (req, res) => {
             Metadata: metaDataConfig
         };
 
-        // 生成签名 URL
         const uploadURL = await s3.getSignedUrlPromise('putObject', params);
 
-        // 关键修复：显式构建前端需要的 Headers
-        // SDK v2 不会自动返回 header 对象，我们需要手动构造给前端
         const requiredHeaders = {
             'Content-Type': fileType,
             'x-amz-meta-upload-time': metaDataConfig['upload-time'],
@@ -64,7 +73,7 @@ app.post('/api/get-upload-url', async (req, res) => {
     }
 });
 
-// 2. 获取所有照片列表
+// API: 获取列表
 app.get('/api/list-photos', async (req, res) => {
     try {
         const data = await s3.listObjectsV2({
@@ -74,13 +83,9 @@ app.get('/api/list-photos', async (req, res) => {
 
         if (!data.Contents) return res.json([]);
 
-        // 获取文件详情
         const files = await Promise.all(data.Contents.map(async (item) => {
             try {
-                // 在 v2 中 headObject 也是异步的
                 const head = await s3.headObject({ Bucket: BUCKET_NAME, Key: item.Key }).promise();
-
-                // 生成下载链接
                 const downloadUrl = await s3.getSignedUrlPromise('getObject', {
                     Bucket: BUCKET_NAME,
                     Key: item.Key,
@@ -104,13 +109,9 @@ app.get('/api/list-photos', async (req, res) => {
     }
 });
 
+// Vercel 适配
 const PORT = process.env.PORT || 3000;
-
-// 修改点：为了适应 Vercel，只有在本地运行时才启动监听
-// 如果是 Vercel 环境，它会自动处理，不需要我们在代码里 listen
 if (require.main === module) {
     app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
 }
-
-// 必须导出 app，让 Vercel 接管
 module.exports = app;
