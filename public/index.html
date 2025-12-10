@@ -14,19 +14,19 @@
             display: flex;
             flex-direction: column;
             height: 100vh;
+            overflow: hidden;
         }
 
         #camera-container {
             position: relative;
             flex: 1;
-            overflow: hidden;
             display: flex;
             justify-content: center;
             align-items: center;
+            background: #000;
         }
 
-        video,
-        canvas {
+        video {
             width: 100%;
             height: 100%;
             object-fit: cover;
@@ -36,61 +36,89 @@
             display: none;
         }
 
-        /* 隐藏canvas，仅用于处理 */
-
-        #ui-layer {
-            position: absolute;
-            bottom: 20px;
-            left: 0;
-            width: 100%;
-            padding: 20px;
-            box-sizing: border-box;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            z-index: 10;
-            background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
-        }
-
-        .controls {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        button {
-            padding: 15px 30px;
-            border-radius: 50px;
-            border: none;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-
-        #btn-capture {
-            background: white;
-            color: black;
-            width: 70px;
-            height: 70px;
-            padding: 0;
-            border: 4px solid #ddd;
-        }
-
-        .options {
-            background: rgba(255, 255, 255, 0.2);
-            padding: 10px;
-            border-radius: 8px;
-            font-size: 14px;
-        }
-
+        /* 顶部状态栏 */
         #status {
             position: absolute;
-            top: 10px;
-            left: 10px;
+            top: 20px;
+            left: 20px;
             background: rgba(0, 0, 0, 0.5);
-            padding: 5px 10px;
-            border-radius: 4px;
-            font-size: 12px;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            z-index: 20;
+            backdrop-filter: blur(4px);
+        }
+
+        /* 底部操作区 */
+        #ui-layer {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            padding: 20px 20px 40px 20px;
+            /* 底部留多点空隙适配全面屏 */
+            box-sizing: border-box;
+            z-index: 10;
+            background: linear-gradient(to top, rgba(0, 0, 0, 0.9), transparent);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* 选项栏 */
+        .options {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            font-size: 14px;
+            text-shadow: 0 1px 2px black;
+        }
+
+        .options label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        /* 按钮控制栏 - 关键：使用 Flex 布局实现居中 */
+        .controls {
+            display: flex;
+            justify-content: center;
+            /* 居中拍照键 */
+            align-items: center;
+            position: relative;
+            /* 为绝对定位的按钮提供参考 */
+            height: 80px;
+        }
+
+        /* 拍照大按钮 */
+        #btn-capture {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.9);
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            cursor: pointer;
+            transition: transform 0.1s;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        #btn-capture:active {
+            transform: scale(0.9);
+            background: white;
+        }
+
+        /* 后台跳转按钮 (定位到右侧) */
+        #btn-gallery {
+            position: absolute;
+            right: 20px;
+            color: white;
+            text-decoration: none;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 13px;
+            backdrop-filter: blur(5px);
         }
     </style>
 </head>
@@ -104,145 +132,147 @@
 
         <div id="ui-layer">
             <div class="options">
-                <label><input type="checkbox" id="watermark-toggle" checked> 开启水印</label>
-                <br>
-                <label>分组: <select id="img-group">
+                <label><input type="checkbox" id="watermark-toggle" checked> 水印</label>
+                <label>分组: <select id="img-group" style="border-radius:4px; padding:2px;">
                         <option value="工作">工作</option>
-                        <option value="生活">生活</option>
+                        <option value="信息">信息</option>
+                        <option value="其他">其他</option>
                     </select></label>
             </div>
+
             <div class="controls">
                 <button id="btn-capture"></button>
+
+                <a href="/admin" id="btn-gallery">📂 相册</a>
             </div>
         </div>
-    </div>
 
-    <script>
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
-        const statusDiv = document.getElementById('status');
-        let locationData = { lat: 0, lon: 0, address: '定位中...' };
+        <script>
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            const statusDiv = document.getElementById('status');
+            let locationData = { lat: 0, lon: 0, address: '定位中...' };
 
-        // 1. 启动摄像头
-        async function initCamera() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment' }, // 优先使用后置摄像头
-                    audio: false
-                });
-                video.srcObject = stream;
-            } catch (err) {
-                alert('无法访问摄像头: ' + err.message);
-            }
-        }
-
-        // 2. 获取地理位置
-        function initGeo() {
-            if (!navigator.geolocation) return statusDiv.innerText = "浏览器不支持定位";
-
-            navigator.geolocation.getCurrentPosition(async (pos) => {
-                locationData.lat = pos.coords.latitude.toFixed(6);
-                locationData.lon = pos.coords.longitude.toFixed(6);
-
-                // 反向地理编码 (使用 OpenStreetMap 免费接口，生产环境请换用高德/谷歌)
+            // 1. 启动摄像头
+            async function initCamera() {
                 try {
-                    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${locationData.lat}&lon=${locationData.lon}`);
-                    const data = await res.json();
-                    locationData.address = data.display_name.split(',')[0]; // 简化地址
-                    statusDiv.innerText = `定位: ${locationData.address}`;
-                } catch (e) {
-                    locationData.address = "未知地点";
-                    statusDiv.innerText = "定位成功，地址获取失败";
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: 'environment' }, // 优先使用后置摄像头
+                        audio: false
+                    });
+                    video.srcObject = stream;
+                } catch (err) {
+                    alert('无法访问摄像头: ' + err.message);
                 }
-            }, err => {
-                statusDiv.innerText = "定位权限被拒绝";
-            });
-        }
-
-        // 3. 拍照处理
-        document.getElementById('btn-capture').addEventListener('click', () => {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            const ctx = canvas.getContext('2d');
-
-            // 绘制当前帧
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-            // 如果开启水印
-            if (document.getElementById('watermark-toggle').checked) {
-                addWatermark(ctx, canvas.width, canvas.height);
             }
 
-            // 压缩并上传
-            canvas.toBlob(uploadImage, 'image/jpeg', 0.7); // 0.7 为压缩质量
-        });
+            // 2. 获取地理位置
+            function initGeo() {
+                if (!navigator.geolocation) return statusDiv.innerText = "浏览器不支持定位";
 
-        function addWatermark(ctx, w, h) {
-            const time = new Date().toLocaleString();
-            const textLines = [
-                `时间: ${time}`,
-                `位置: ${locationData.address}`,
-                `经纬: ${locationData.lat}, ${locationData.lon}`
-            ];
+                navigator.geolocation.getCurrentPosition(async (pos) => {
+                    locationData.lat = pos.coords.latitude.toFixed(6);
+                    locationData.lon = pos.coords.longitude.toFixed(6);
 
-            const fontSize = w / 25; // 动态字体大小
-            ctx.font = `${fontSize}px Arial`;
-            ctx.fillStyle = "white";
-            ctx.shadowColor = "black";
-            ctx.shadowBlur = 4;
-            ctx.lineWidth = 2;
-
-            let y = h - (textLines.length * fontSize * 1.5) - 20;
-            const x = 20;
-
-            textLines.forEach((line, index) => {
-                ctx.strokeText(line, x, y + (index * fontSize * 1.5));
-                ctx.fillText(line, x, y + (index * fontSize * 1.5));
-            });
-        }
-
-        async function uploadImage(blob) {
-            statusDiv.innerText = "正在上传...";
-            const group = document.getElementById('img-group').value;
-
-            try {
-                // A. 请求后端，获取 URL 和 Headers
-                const res = await fetch('/api/get-upload-url', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        filename: 'photo.jpg',
-                        fileType: 'image/jpeg',
-                        metadata: {
-                            lat: locationData.lat,
-                            lon: locationData.lon,
-                            // 这里的编码要和后端保持一致
-                            locationName: locationData.address,
-                            group: group
-                        }
-                    })
+                    // 反向地理编码 (使用 OpenStreetMap 免费接口，生产环境请换用高德/谷歌)
+                    try {
+                        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${locationData.lat}&lon=${locationData.lon}`);
+                        const data = await res.json();
+                        locationData.address = data.display_name.split(',')[0]; // 简化地址
+                        statusDiv.innerText = `定位: ${locationData.address}`;
+                    } catch (e) {
+                        locationData.address = "未知地点";
+                        statusDiv.innerText = "定位成功，地址获取失败";
+                    }
+                }, err => {
+                    statusDiv.innerText = "定位权限被拒绝";
                 });
-                const { uploadURL, headers } = await res.json();
-
-                // B. 上传到 Cloudflare R2
-                // 重点：必须把后端给的 headers 传进去，缺一个都会报 403
-                await fetch(uploadURL, {
-                    method: 'PUT',
-                    body: blob,
-                    headers: headers
-                });
-
-                statusDiv.innerText = "上传成功!";
-                setTimeout(() => statusDiv.innerText = `定位: ${locationData.address}`, 2000);
-            } catch (err) {
-                console.error(err);
-                statusDiv.innerText = "上传失败";
             }
-        }
 
-        initCamera();
-        initGeo();
-    </script>
+            // 3. 拍照处理
+            document.getElementById('btn-capture').addEventListener('click', () => {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext('2d');
+
+                // 绘制当前帧
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                // 如果开启水印
+                if (document.getElementById('watermark-toggle').checked) {
+                    addWatermark(ctx, canvas.width, canvas.height);
+                }
+
+                // 压缩并上传
+                canvas.toBlob(uploadImage, 'image/jpeg', 0.7); // 0.7 为压缩质量
+            });
+
+            function addWatermark(ctx, w, h) {
+                const time = new Date().toLocaleString();
+                const textLines = [
+                    `时间: ${time}`,
+                    `位置: ${locationData.address}`,
+                    `经纬: ${locationData.lat}, ${locationData.lon}`
+                ];
+
+                const fontSize = w / 25; // 动态字体大小
+                ctx.font = `${fontSize}px Arial`;
+                ctx.fillStyle = "white";
+                ctx.shadowColor = "black";
+                ctx.shadowBlur = 4;
+                ctx.lineWidth = 2;
+
+                let y = h - (textLines.length * fontSize * 1.5) - 20;
+                const x = 20;
+
+                textLines.forEach((line, index) => {
+                    ctx.strokeText(line, x, y + (index * fontSize * 1.5));
+                    ctx.fillText(line, x, y + (index * fontSize * 1.5));
+                });
+            }
+
+            async function uploadImage(blob) {
+                statusDiv.innerText = "正在上传...";
+                const group = document.getElementById('img-group').value;
+
+                try {
+                    // A. 请求后端，获取 URL 和 Headers
+                    const res = await fetch('/api/get-upload-url', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            filename: 'photo.jpg',
+                            fileType: 'image/jpeg',
+                            metadata: {
+                                lat: locationData.lat,
+                                lon: locationData.lon,
+                                // 这里的编码要和后端保持一致
+                                locationName: locationData.address,
+                                group: group
+                            }
+                        })
+                    });
+                    const { uploadURL, headers } = await res.json();
+
+                    // B. 上传到 Cloudflare R2
+                    // 重点：必须把后端给的 headers 传进去，缺一个都会报 403
+                    await fetch(uploadURL, {
+                        method: 'PUT',
+                        body: blob,
+                        headers: headers
+                    });
+
+                    statusDiv.innerText = "上传成功!";
+                    setTimeout(() => statusDiv.innerText = `定位: ${locationData.address}`, 2000);
+                } catch (err) {
+                    console.error(err);
+                    statusDiv.innerText = "上传失败";
+                }
+            }
+
+            initCamera();
+            initGeo();
+        </script>
 </body>
 
 </html>
