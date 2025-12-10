@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>后台数据管理</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+            background: #f4f4f9;
+        }
+
+        h2 {
+            border-bottom: 2px solid #333;
+            padding-bottom: 10px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        th,
+        td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        th {
+            background-color: #007bff;
+            color: white;
+        }
+
+        .thumb {
+            width: 100px;
+            height: 100px;
+            object-fit: cover;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: white;
+        }
+
+        .badge-work {
+            background: #28a745;
+        }
+
+        .badge-life {
+            background: #17a2b8;
+        }
+
+        .badge-default {
+            background: #6c757d;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h2>📸 照片数据中心</h2>
+    <div id="loading">正在加载数据...</div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>预览</th>
+                <th>上传时间</th>
+                <th>地理位置 (Meta)</th>
+                <th>经纬度</th>
+                <th>分组</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody id="data-body"></tbody>
+    </table>
+
+    <script>
+        async function loadData() {
+            const res = await fetch('/api/list-photos');
+            const files = await res.json();
+            document.getElementById('loading').style.display = 'none';
+
+            const tbody = document.getElementById('data-body');
+
+            files.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified)); // 按时间倒序
+
+            files.forEach(file => {
+                const meta = file.metadata || {};
+                // 解码可能的 URL 编码中文
+                let locName = meta['location-name'] || '-';
+                try { locName = decodeURIComponent(locName); } catch (e) { }
+
+                const group = meta['img-group'] || 'default';
+                const badgeClass = group === '工作' ? 'badge-work' : (group === '生活' ? 'badge-life' : 'badge-default');
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                <td><a href="${file.url}" target="_blank"><img src="${file.url}" class="thumb"></a></td>
+                <td>${new Date(file.lastModified).toLocaleString()}</td>
+                <td>${locName}</td>
+                <td>${meta['geo-lat'] || ''}, ${meta['geo-lon'] || ''}</td>
+                <td><span class="badge ${badgeClass}">${group}</span></td>
+                <td><a href="${file.url}" download="photo.jpg">下载原图</a></td>
+            `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        loadData();
+    </script>
+</body>
+
+</html>
